@@ -1,0 +1,65 @@
+name: Build Aseprite Windows
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build Aseprite (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 60
+
+    steps:
+
+    - name: Checkout Aseprite
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Install Skia
+      shell: bash
+      run: |
+        skia_url=$(source laf/misc/skia-url.sh | xargs)
+        skia_file=$(basename "$skia_url")
+
+        curl --ssl-revoke-best-effort -L -o "$skia_file" "$skia_url"
+
+        unzip "$skia_file" -d skia
+
+    - name: Install Ninja
+      uses: aseprite/get-ninja@main
+
+    - name: Setup MSVC
+      uses: TheMrMilchmann/setup-msvc-dev@v4
+      with:
+        arch: x64
+
+    - name: Generate Build Files
+      shell: bash
+      run: |
+        cmake -S . -B build -G Ninja \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DENABLE_TESTS=OFF \
+          -DENABLE_SCRIPTING=ON \
+          -DLAF_BACKEND=skia \
+          -DSKIA_DIR=$(realpath skia) \
+          -DSKIA_LIBRARY_DIR=$(realpath skia/out/Release-x64)
+
+    - name: Compile
+      shell: bash
+      run: |
+        cd build
+        ninja
+
+    - name: Create Portable Package
+      shell: bash
+      run: |
+        cd build/bin
+        echo "# Portable Aseprite" > aseprite.ini
+        7z a ../../Aseprite-Windows-Lua.zip *
+
+    - name: Upload Aseprite
+      uses: actions/upload-artifact@v4
+      with:
+        name: Aseprite-Windows-Lua
+        path: Aseprite-Windows-Lua.zip
