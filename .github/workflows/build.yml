@@ -1,113 +1,65 @@
-name: build
-on: [push, pull_request]
+name: Build Aseprite Windows
+
+on:
+  workflow_dispatch:
+
 jobs:
   build:
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [windows-latest]
-        build_type: [Release]
-        ui: [gui]
-        scripting: [lua, noscripts]
-        exclude:
-          - build_type: Debug
-            ui: gui
-          - build_type: RelWithDebInfo
-            ui: cli
-          - build_type: RelWithDebInfo
-            scripting: noscripts
+    name: Build Aseprite (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 60
+
     steps:
-    - uses: actions/checkout@v7
+
+    - name: Checkout Aseprite
+      uses: actions/checkout@v4
       with:
-        submodules: 'recursive'
-    - name: Install Dependencies
-      if: runner.os == 'Linux'
-      shell: bash
-      run: |
-        sudo apt-get update -qq
-        sudo apt-get install -y \
-          libpixman-1-dev libfreetype6-dev libharfbuzz-dev zlib1g-dev \
-          libx11-dev libxcursor-dev libxi-dev libxrandr-dev libgl1-mesa-dev \
-          libfontconfig1-dev
+        submodules: recursive
+
     - name: Install Skia
-      if: ${{ matrix.ui == 'gui' }}
       shell: bash
       run: |
-        if [[ "${{ runner.os }}" == "Windows" ]] ; then
-          this_dir=$(cygpath "${{ github.workspace }}")
-        else
-          this_dir="${{ github.workspace }}"
-        fi
-        skia_url=$(source $this_dir/laf/misc/skia-url.sh | xargs)
-        skia_file=$(basename $skia_url)
+        skia_url=$(source laf/misc/skia-url.sh | xargs)
+        skia_file=$(basename "$skia_url")
+
         curl --ssl-revoke-best-effort -L -o "$skia_file" "$skia_url"
+
         unzip "$skia_file" -d skia
-    - name: ccache
-      uses: hendrikmuhs/ccache-action@v1.2.23
-      if: ${{ runner.os == 'Linux' || runner.os == 'macOS' }}
-      with:
-        key: ${{ matrix.os }}-${{ matrix.ui }}-${{ matrix.scripting }}-${{ matrix.build_type }}
-    - uses: aseprite/get-ninja@main
-    - uses: TheMrMilchmann/setup-msvc-dev@v4
-      if: runner.os == 'Windows'
+
+    - name: Install Ninja
+      uses: aseprite/get-ninja@main
+
+    - name: Setup MSVC
+      uses: TheMrMilchmann/setup-msvc-dev@v4
       with:
         arch: x64
-    - name: Generating Makefiles
+
+    - name: Generate Build Files
       shell: bash
       run: |
-        if [[ "${{ runner.os }}" == "Windows" ]] ; then
-          export enable_ccache=off
-        else
-          export enable_ccache=on
-        fi
-
-        if [[ "${{ matrix.ui }}" == "gui" ]] ; then
-          export laf_backend=skia
-        else
-          export laf_backend=none
-        fi
-
-        if [[ "${{ matrix.scripting }}" == "lua" ]] ; then
-          export enable_scripting=on
-        else
-          export enable_scripting=off
-        fi
-
-        if [[ "${{ runner.os }}" == "macOS" ]] ; then
-          export skia_arch=arm64
-        else
-          export skia_arch=x64
-        fi
-
         cmake -S . -B build -G Ninja \
-          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
-          -DCMAKE_OSX_DEPLOYMENT_TARGET=10.14 \
-          -DENABLE_TESTS=ON \
-          -DENABLE_SCRIPTING=$enable_scripting \
-          -DENABLE_CCACHE=$enable_ccache \
-          -DLAF_BACKEND=$laf_backend \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DENABLE_TESTS=OFF \
+          -DENABLE_SCRIPTING=ON \
+          -DLAF_BACKEND=skia \
           -DSKIA_DIR=$(realpath skia) \
-          -DSKIA_LIBRARY_DIR=$(realpath skia/out/Release-$skia_arch)
-    - name: Compiling
+          -DSKIA_LIBRARY_DIR=$(realpath skia/out/Release-x64)
+
+    - name: Compile
       shell: bash
       run: |
-        cd build && ninja
-    - name: Running C++ Tests
+        cd build
+        ninja
+
+    - name: Create Portable Package
       shell: bash
       run: |
-        if [[ "${{ runner.os }}" == "Linux" ]] ; then
-          export XVFB=xvfb-run
-        fi
-        cd build && $XVFB ctest --output-on-failure
-    - name: Running CLI Tests
-      if: ${{ matrix.scripting == 'lua' }}
-      shell: bash
-      run: |
-        if [[ "${{ runner.os }}" == "Linux" ]] ; then
-          export XVFB=xvfb-run
-        fi
-        export ASEPRITE=$PWD/build/bin/aseprite
-        cd tests
-        $XVFB bash run-tests.sh
+        cd build/bin
+        echo "# Portable Aseprite" > aseprite.ini
+        7z a ../../Aseprite-Windows-Lua.zip *
+
+    - name: Upload Aseprite
+      uses: actions/upload-artifact@v4
+      with:
+        name: Aseprite-Windows-Lua
+        path: Aseprite-Windows-Lua.zip
