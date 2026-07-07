@@ -1,5 +1,5 @@
 // Aseprite
-// Copyright (C) 2018-2024  Igara Studio S.A.
+// Copyright (C) 2018-2025  Igara Studio S.A.
 // Copyright (C) 2001-2018  David Capello
 //
 // This program is distributed under the terms of
@@ -124,6 +124,11 @@ Doc::LockResult Doc::upgradeToWrite(int timeout)
   return res;
 }
 
+void Doc::updateWriterThread()
+{
+  m_rwLock.updateWriterThread();
+}
+
 void Doc::downgradeToRead(LockResult lockResult)
 {
   DOC_TRACE("DOC: downgradeToRead", this, (int)lockResult);
@@ -169,6 +174,12 @@ DocApi Doc::getApi(Transaction& transaction)
 
 //////////////////////////////////////////////////////////////////////
 // Main properties
+
+void Doc::resetUndoHistory()
+{
+  m_undo = std::make_unique<DocUndo>();
+  m_undo->setContext(m_ctx);
+}
 
 bool Doc::isUndoing() const
 {
@@ -338,6 +349,25 @@ void Doc::notifyAfterAddTile(LayerTilemap* layer, frame_t frame, tile_index ti)
   notify_observers<DocEvent&>(&DocObserver::onAfterAddTile, ev);
 }
 
+void Doc::notifyBeforeSlicesDuplication()
+{
+  DocEvent ev(this);
+  notify_observers<DocEvent&>(&DocObserver::onBeforeSlicesDuplication, ev);
+}
+
+void Doc::notifySliceDuplicated(Slice* slice)
+{
+  DocEvent ev(this);
+  ev.slice(slice);
+  notify_observers<DocEvent&>(&DocObserver::onSliceDuplicated, ev);
+}
+
+void Doc::notifyBeforeCommitTransaction()
+{
+  DocEvent ev(this);
+  notify_observers<DocEvent&>(&DocObserver::onBeforeCommitTransaction, ev);
+}
+
 bool Doc::isModified() const
 {
   return !m_undo->isInSavedStateOrSimilar();
@@ -497,9 +527,9 @@ void Doc::resetTransformation()
 //////////////////////////////////////////////////////////////////////
 // Copying
 
-void Doc::copyLayerContent(const Layer* sourceLayer0, Doc* destDoc, Layer* destLayer0) const
+void Doc::copyLayerContent(const Layer* sourceLayer, Doc* destDoc, Layer* destLayer) const
 {
-  LayerFlags dstFlags = sourceLayer0->flags();
+  LayerFlags dstFlags = sourceLayer->flags();
 
   // Remove the "background" flag if the destDoc already has a background layer.
   if (((int)dstFlags & (int)LayerFlags::Background) == (int)LayerFlags::Background &&
@@ -508,53 +538,15 @@ void Doc::copyLayerContent(const Layer* sourceLayer0, Doc* destDoc, Layer* destL
   }
 
   // Copy the layer name/flags/user data
-  destLayer0->setName(sourceLayer0->name());
-  destLayer0->setFlags(dstFlags);
-  destLayer0->setUserData(sourceLayer0->userData());
+  destLayer->setName(sourceLayer->name());
+  destLayer->setFlags(dstFlags);
+  destLayer->setUserData(sourceLayer->userData());
 
-  if (sourceLayer0->isImage() && destLayer0->isImage()) {
-    const LayerImage* sourceLayer = static_cast<const LayerImage*>(sourceLayer0);
-    LayerImage* destLayer = static_cast<LayerImage*>(destLayer0);
+  // Copy blend mode and opacity
+  destLayer->setBlendMode(sourceLayer->blendMode());
+  destLayer->setOpacity(sourceLayer->opacity());
 
-    // Copy blend mode and opacity
-    destLayer->setBlendMode(sourceLayer->blendMode());
-    destLayer->setOpacity(sourceLayer->opacity());
-
-    // Copy cels
-    CelConstIterator it = sourceLayer->getCelBegin();
-    CelConstIterator end = sourceLayer->getCelEnd();
-
-    std::map<ObjectId, Cel*> linked;
-
-    for (; it != end; ++it) {
-      const Cel* sourceCel = *it;
-      if (sourceCel->frame() > destLayer->sprite()->lastFrame())
-        break;
-
-      std::unique_ptr<Cel> newCel(nullptr);
-
-      auto it = linked.find(sourceCel->data()->id());
-      if (it != linked.end()) {
-        newCel.reset(Cel::MakeLink(sourceCel->frame(), it->second));
-        newCel->copyNonsharedPropertiesFrom(sourceCel);
-      }
-      else {
-        newCel.reset(create_cel_copy(nullptr, // TODO add undo information?
-                                     sourceCel,
-                                     destLayer->sprite(),
-                                     destLayer,
-                                     sourceCel->frame()));
-        linked.insert(std::make_pair(sourceCel->data()->id(), newCel.get()));
-      }
-
-      destLayer->addCel(newCel.get());
-      newCel.release();
-    }
-  }
-  else if (sourceLayer0->isGroup() && destLayer0->isGroup()) {
-    const LayerGroup* sourceLayer = static_cast<const LayerGroup*>(sourceLayer0);
-    LayerGroup* destLayer = static_cast<LayerGroup*>(destLayer0);
-
+  if (sourceLayer->isGroup() && destLayer->isGroup()) {
     for (Layer* sourceChild : sourceLayer->layers()) {
       std::unique_ptr<Layer> destChild(nullptr);
 
@@ -590,6 +582,38 @@ void Doc::copyLayerContent(const Layer* sourceLayer0, Doc* destDoc, Layer* destL
       destLayer->stackLayer(newLayer, afterThis);
     }
   }
+  else if (sourceLayer->type() == destLayer->type()) {
+    // Copy cels
+    CelConstIterator it = sourceLayer->getCelBegin();
+    const CelConstIterator end = sourceLayer->getCelEnd();
+
+    std::map<ObjectId, Cel*> linked;
+
+    for (; it != end; ++it) {
+      const Cel* sourceCel = *it;
+      if (sourceCel->frame() > destLayer->sprite()->lastFrame())
+        break;
+
+      std::unique_ptr<Cel> newCel(nullptr);
+
+      auto it = linked.find(sourceCel->data()->id());
+      if (it != linked.end()) {
+        newCel.reset(Cel::MakeLink(sourceCel->frame(), it->second));
+        newCel->copyNonsharedPropertiesFrom(sourceCel);
+      }
+      else {
+        newCel.reset(create_cel_copy(nullptr, // TODO add undo information?
+                                     sourceCel,
+                                     destLayer->sprite(),
+                                     destLayer,
+                                     sourceCel->frame()));
+        linked.insert(std::make_pair(sourceCel->data()->id(), newCel.get()));
+      }
+
+      destLayer->addCel(newCel.get());
+      newCel.release();
+    }
+  }
   else {
     ASSERT(false && "Trying to copy two incompatible layers");
   }
@@ -604,6 +628,7 @@ Doc* Doc::duplicate(DuplicateType type) const
   std::unique_ptr<Doc> documentCopy(new Doc(spriteCopyPtr.get()));
   Sprite* spriteCopy = spriteCopyPtr.release();
 
+  spriteCopy->setUserData(sourceSprite->userData());
   spriteCopy->setTotalFrames(sourceSprite->totalFrames());
   spriteCopy->setTileManagementPlugin(sourceSprite->tileManagementPlugin());
 

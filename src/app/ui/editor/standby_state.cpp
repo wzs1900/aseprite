@@ -1,5 +1,5 @@
 // Aseprite
-// Copyright (C) 2018-2024  Igara Studio S.A.
+// Copyright (C) 2018-2025  Igara Studio S.A.
 // Copyright (C) 2001-2018  David Capello
 //
 // This program is distributed under the terms of
@@ -142,6 +142,12 @@ bool StandbyState::onMouseDown(Editor* editor, MouseMessage* msg)
         return true;
       }
     }
+  }
+
+  // Drag value.
+  if (auto dragState = handleDragActionsFromMessage(editor, msg)) {
+    editor->setState(dragState);
+    return true;
   }
 
   // Start scroll loop
@@ -464,18 +470,8 @@ bool StandbyState::onKeyDown(Editor* editor, KeyMessage* msg)
       checkStartDrawingStraightLine(editor, nullptr, nullptr))
     return false;
 
-  Keys keys = KeyboardShortcuts::instance()->getDragActionsFromKeyMessage(KeyContext::MouseWheel,
-                                                                          msg);
-  if (editor->hasMouse() && !keys.empty()) {
-    // Don't enter DraggingValueState to change brush size if we are
-    // in a selection-like tool
-    if (keys.size() == 1 && keys[0]->wheelAction() == WheelAction::BrushSize &&
-        editor->getCurrentEditorInk()->isSelection()) {
-      return false;
-    }
-
-    EditorStatePtr newState(new DraggingValueState(editor, keys));
-    editor->setState(newState);
+  if (auto dragState = handleDragActionsFromMessage(editor, msg)) {
+    editor->setState(dragState);
     return true;
   }
 
@@ -748,11 +744,12 @@ void StandbyState::transformSelection(Editor* editor, MouseMessage* msg, HandleT
                                                         site,
                                                         tmpImage.get(),
                                                         document->mask(),
-                                                        "Transformation"));
+                                                        "Transformation",
+                                                        &editor->getTiledModeHelper()));
 
-    // If the Ctrl key is pressed start dragging a copy of the selection
+    // If the Ctrl key is pressed and there is a handle, start dragging a copy of the selection
     EditorCustomizationDelegate* customization = editor->getCustomizationDelegate();
-    if ((customization) &&
+    if (handle != NoHandle && customization &&
         int(customization->getPressedKeyAction(KeyContext::TranslatingSelection) &
             KeyAction::CopySelection))
       pixelsMovement->copyMask();
@@ -772,6 +769,22 @@ void StandbyState::transformSelection(Editor* editor, MouseMessage* msg, HandleT
     StatusBar::instance()->showTip(1000, Strings::statusbar_tips_not_enough_transform_memory());
     editor->showMouseCursor(kForbiddenCursor);
   }
+}
+
+EditorStatePtr StandbyState::handleDragActionsFromMessage(Editor* editor, const ui::Message* msg)
+{
+  Keys keys = KeyboardShortcuts::instance()->getDragActionsFromMessage(msg);
+  if (!editor->hasMouse() || keys.empty())
+    return nullptr;
+
+  // Don't enter DraggingValueState to change brush size if we are
+  // in a selection-like tool
+  if (keys.size() == 1 && keys[0]->wheelAction() == WheelAction::BrushSize &&
+      editor->getCurrentEditorInk()->isSelection()) {
+    return nullptr;
+  }
+
+  return EditorStatePtr(new DraggingValueState(editor, keys));
 }
 
 void StandbyState::callEyedropper(Editor* editor, const ui::MouseMessage* msg)
@@ -1000,7 +1013,7 @@ void StandbyState::Decorator::postRenderDecorator(EditorPostRender* render)
   if (StandbyState::Decorator::getSymmetryHandles(editor, handles)) {
     auto theme = skin::SkinTheme::get(editor);
     os::Surface* part = theme->parts.transformationHandle()->bitmap(0);
-    ui::Graphics g(editor->display(), editor->display()->backLayer()->surface(), 0, 0);
+    ui::Graphics g(editor->display());
     for (const auto& handle : handles)
       g.drawRgbaSurface(part, handle.bounds.x, handle.bounds.y);
   }

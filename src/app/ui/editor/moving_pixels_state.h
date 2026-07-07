@@ -1,5 +1,5 @@
 // Aseprite
-// Copyright (C) 2019-2024  Igara Studio S.A.
+// Copyright (C) 2019-present  Igara Studio S.A.
 // Copyright (C) 2001-2017  David Capello
 //
 // This program is distributed under the terms of
@@ -83,6 +83,8 @@ public:
 
   Transformation getTransformation(Editor* editor) override;
 
+  bool ownsTransaction() const;
+
 private:
   // DelayedMouseMoveDelegate impl
   void onCommitMouseMove(Editor* editor, const gfx::PointF& spritePos) override;
@@ -94,7 +96,10 @@ private:
   void onBeforeCommandExecution(CommandExecutionEvent& ev);
 
   void setTransparentColor(bool opaque, const app::Color& color);
+
+  void deselect();
   void dropPixels();
+  void cancelDrag();
 
   bool isActiveDocument() const;
   bool isActiveEditor() const;

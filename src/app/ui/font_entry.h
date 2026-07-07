@@ -14,7 +14,11 @@
 #include "ui/box.h"
 #include "ui/button.h"
 #include "ui/combobox.h"
+#include "ui/int_entry.h"
+#include "ui/paint.h"
+#include "ui/tooltips.h"
 
+#include <memory>
 #include <string>
 
 namespace app {
@@ -30,18 +34,30 @@ public:
     Flags,
     Hinting,
     Popup,
+    Paint,
   };
 
-  FontEntry();
+  FontEntry(bool withStrokeAndFill);
   ~FontEntry();
 
   FontInfo info() { return m_info; }
   void setInfo(const FontInfo& info, From from);
+  void setReadOnly(bool readOnly)
+  {
+    m_face.setReadOnly(readOnly);
+    m_size.setEnabled(!readOnly && isEnabled());
+    m_size.getEntryWidget()->setReadOnly(readOnly);
+    m_style.setEnabled(!readOnly && isEnabled());
+  }
+  bool isReadOnly() const { return m_face.isReadOnly(); }
+
+  ui::Paint paint();
 
   obs::signal<void(const FontInfo&, From)> FontChange;
 
 private:
   void onStyleItemClick(ButtonSet::Item* item);
+  void onStrokeChange();
 
   class FontFace : public SearchEntry {
   public:
@@ -73,13 +89,41 @@ private:
 
   class FontStyle : public ButtonSet {
   public:
-    FontStyle();
+    FontStyle(ui::TooltipManager* tooltips);
   };
 
+  class FontStroke : public HBox {
+  public:
+    FontStroke(ui::TooltipManager* tooltips);
+    bool fill() const;
+    float stroke() const;
+    obs::signal<void()> Change;
+
+  private:
+    class WidthEntry : public ui::IntEntry,
+                       public ui::SliderDelegate {
+    public:
+      WidthEntry();
+      obs::signal<void()> ValueChange;
+
+    private:
+      void onValueChange() override;
+      bool onAcceptUnicodeChar(int unicodeChar) override;
+      // SliderDelegate impl
+      std::string onGetTextFromValue(int value) override;
+      int onGetValueFromText(const std::string& text) override;
+    };
+    ButtonSet m_fill;
+    WidthEntry m_stroke;
+  };
+
+  ui::TooltipManager m_tooltips;
   FontInfo m_info;
   FontFace m_face;
   FontSize m_size;
   FontStyle m_style;
+  std::unique_ptr<FontStroke> m_stroke;
+  std::vector<text::FontStyle::Weight> m_availableWeights;
   bool m_lockFace = false;
 };
 

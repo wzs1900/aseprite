@@ -1,5 +1,5 @@
 // Aseprite Document Library
-// Copyright (c) 2019-2023  Igara Studio S.A.
+// Copyright (c) 2019-2025  Igara Studio S.A.
 //
 // This file is released under the terms of the MIT license.
 // Read LICENSE.txt for more information.
@@ -60,12 +60,19 @@ Tileset::Tileset(Sprite* sprite, const Tileset* other)
     set(ti, ImageRef(Image::createCopy(image.get())));
     setTileData(ti, other->getTileData(ti));
   }
+  setUserData(other->userData());
 }
 
 // static
 Tileset* Tileset::MakeCopyWithoutImages(const Tileset* tileset)
 {
-  std::unique_ptr<Tileset> copy(new Tileset(tileset->sprite(), tileset->grid(), tileset->size()));
+  return MakeCopyWithoutImagesForSprite(tileset, tileset->sprite());
+}
+
+// static
+Tileset* Tileset::MakeCopyWithoutImagesForSprite(const Tileset* tileset, Sprite* sprite)
+{
+  std::unique_ptr<Tileset> copy(new Tileset(sprite, tileset->grid(), tileset->size()));
   copy->setName(tileset->name());
   copy->setUserData(tileset->userData());
   return copy.release();
@@ -87,7 +94,13 @@ Tileset* Tileset::MakeCopyWithSameImages(const Tileset* tileset)
 // static
 Tileset* Tileset::MakeCopyCopyingImages(const Tileset* tileset)
 {
-  std::unique_ptr<Tileset> copy(MakeCopyWithoutImages(tileset));
+  return MakeCopyCopyingImagesForSprite(tileset, tileset->sprite());
+}
+
+// static
+Tileset* Tileset::MakeCopyCopyingImagesForSprite(const Tileset* tileset, Sprite* sprite)
+{
+  std::unique_ptr<Tileset> copy(MakeCopyWithoutImagesForSprite(tileset, sprite));
   for (tile_index ti = 0; ti < copy->size(); ++ti) {
     ImageRef image = tileset->get(ti);
     ASSERT(image);

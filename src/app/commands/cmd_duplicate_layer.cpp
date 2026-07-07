@@ -1,5 +1,5 @@
 // Aseprite
-// Copyright (C) 2001-2018  David Capello
+// Copyright (C) 2001-2025  David Capello
 //
 // This program is distributed under the terms of
 // the End-User License Agreement for Aseprite.
@@ -10,16 +10,12 @@
 
 #include "app/app.h"
 #include "app/commands/command.h"
-#include "app/console.h"
 #include "app/context_access.h"
 #include "app/doc_api.h"
-#include "app/doc_undo.h"
+#include "app/i18n/strings.h"
 #include "app/modules/gui.h"
 #include "app/tx.h"
-#include "app/ui/editor/editor.h"
 #include "doc/layer.h"
-#include "doc/sprite.h"
-#include "ui/ui.h"
 
 namespace app {
 
@@ -32,8 +28,7 @@ protected:
   void onExecute(Context* context) override;
 };
 
-DuplicateLayerCommand::DuplicateLayerCommand()
-  : Command(CommandId::DuplicateLayer(), CmdRecordableFlag)
+DuplicateLayerCommand::DuplicateLayerCommand() : Command(CommandId::DuplicateLayer())
 {
 }
 
@@ -48,7 +43,7 @@ void DuplicateLayerCommand::onExecute(Context* context)
   Doc* document = writer.document();
 
   {
-    Tx tx(writer, "Layer Duplication");
+    Tx tx(writer, Strings::commands_DuplicateLayer());
     LayerImage* sourceLayer = static_cast<LayerImage*>(writer.layer());
     DocApi api = document->getApi(tx);
     api.duplicateLayerAfter(sourceLayer, sourceLayer->parent(), sourceLayer);

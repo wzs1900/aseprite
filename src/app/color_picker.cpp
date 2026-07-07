@@ -82,7 +82,7 @@ ColorPicker::ColorPicker() : m_tile(doc::notile), m_alpha(0), m_layer(nullptr)
 void ColorPicker::pickColor(const Site& site,
                             const gfx::PointF& _pos,
                             const render::Projection& proj,
-                            const Mode mode)
+                            Mode mode)
 {
   const doc::Sprite* sprite = site.sprite();
   gfx::PointF pos = _pos;
@@ -100,11 +100,14 @@ void ColorPicker::pickColor(const Site& site,
     pos = wrap_pointF(docPref.tiled.mode(), site.sprite()->size(), pos);
   }
 
+  if (mode == FromFirstReferenceLayer && sprite && !sprite->hasVisibleReferenceLayers())
+    mode = FromComposition;
+
   // Get the color from the image
   switch (mode) {
     // Pick from the composed image
     case FromComposition: {
-      doc::RenderPlan plan(pref.experimental.composeGroups());
+      doc::RenderPlan plan;
       plan.addLayer(sprite->root(), site.frame());
 
       doc::CelList cels;

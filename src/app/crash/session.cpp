@@ -1,5 +1,5 @@
 // Aseprite
-// Copyright (C) 2019-2024  Igara Studio S.A.
+// Copyright (C) 2019-present  Igara Studio S.A.
 // Copyright (C) 2001-2018  David Capello
 //
 // This program is distributed under the terms of
@@ -19,12 +19,11 @@
 #include "app/crash/write_document.h"
 #include "app/doc.h"
 #include "app/doc_access.h"
-#include "app/file/file.h"
+#include "app/ui/editor/scoped_tool_loop_fix.h"
 #include "app/ui_context.h"
 #include "base/convert_to.h"
 #include "base/fs.h"
 #include "base/fstream_path.h"
-#include "base/process.h"
 #include "base/split_string.h"
 #include "base/string.h"
 #include "base/thread.h"
@@ -126,12 +125,6 @@ const Session::Backups& Session::backups()
     }
   }
   return m_backups;
-}
-
-bool Session::isRunning()
-{
-  loadPid();
-  return base::get_process_name(m_pid) == base::get_process_name(base::get_current_process_id());
 }
 
 bool Session::isCrashedSession()
@@ -269,6 +262,9 @@ bool Session::saveDocumentChanges(Doc* doc)
         of << "open";
     }
   }
+
+  // Fix cel position if we're just making the backup in a ToolLoop
+  ScopedToolLoopFix fix(doc->sprite());
 
   // Save document information
   return write_document(dir, doc, &reader);

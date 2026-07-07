@@ -20,8 +20,6 @@
 #include "app/tx.h"
 #include "app/ui/timeline/timeline.h"
 #include "doc/cel.h"
-#include "doc/cels_range.h"
-#include "doc/sprite.h"
 
 #include <string>
 
@@ -42,7 +40,7 @@ private:
   int m_opacity;
 };
 
-CelOpacityCommand::CelOpacityCommand() : Command(CommandId::CelOpacity(), CmdUIOnlyFlag)
+CelOpacityCommand::CelOpacityCommand() : Command(CommandId::CelOpacity())
 {
   m_opacity = 255;
 }
@@ -68,7 +66,7 @@ void CelOpacityCommand::onExecute(Context* context)
     return;
 
   {
-    Tx tx(writer, "Set Cel Opacity");
+    Tx tx(writer, onGetFriendlyName());
 
     for (Cel* c : site.selectedUniqueCels()) {
       if (!c->layer()->isBackground() && c->layer()->isEditable() && m_opacity != c->opacity()) {

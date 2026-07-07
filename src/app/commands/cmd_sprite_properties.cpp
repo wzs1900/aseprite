@@ -1,5 +1,5 @@
 // Aseprite
-// Copyright (C) 2018-2024  Igara Studio S.A.
+// Copyright (C) 2018-2025  Igara Studio S.A.
 // Copyright (C) 2001-2018  David Capello
 //
 // This program is distributed under the terms of
@@ -24,13 +24,13 @@
 #include "app/modules/gui.h"
 #include "app/pref/preferences.h"
 #include "app/tx.h"
+#include "app/ui/app_tooltips.h"
 #include "app/ui/color_button.h"
 #include "app/ui/skin/skin_theme.h"
 #include "app/ui/user_data_view.h"
 #include "app/util/pixel_ratio.h"
 #include "app/util/tileset_utils.h"
 #include "base/mem_utils.h"
-#include "doc/image.h"
 #include "doc/palette.h"
 #include "doc/sprite.h"
 #include "doc/tilesets.h"
@@ -188,8 +188,7 @@ private:
   void onToggleUserData()
   {
     m_userDataView.toggleVisibility();
-    remapWindow();
-    manager()->invalidate();
+    expandWindow(gfx::Size(bounds().w, sizeHint().h));
   }
 
   void onTilesedDuplicated(const Tileset* tilesetClone)
@@ -235,15 +234,14 @@ protected:
   void onExecute(Context* context) override;
 };
 
-SpritePropertiesCommand::SpritePropertiesCommand()
-  : Command(CommandId::SpriteProperties(), CmdUIOnlyFlag)
+SpritePropertiesCommand::SpritePropertiesCommand() : Command(CommandId::SpriteProperties())
 {
 }
 
 bool SpritePropertiesCommand::onEnabled(Context* context)
 {
-  return context->checkFlags(ContextFlags::ActiveDocumentIsWritable |
-                             ContextFlags::HasActiveSprite);
+  return context->isUIAvailable() && context->checkFlags(ContextFlags::ActiveDocumentIsWritable |
+                                                         ContextFlags::HasActiveSprite);
 }
 
 void SpritePropertiesCommand::onExecute(Context* context)
@@ -306,11 +304,11 @@ void SpritePropertiesCommand::onExecute(Context* context)
       color_button = new ColorButton(app::Color::fromIndex(sprite->transparentColor()),
                                      IMAGE_INDEXED,
                                      ColorButtonOptions());
-
+      color_button->setId("transparent_color");
       window.transparentColorPlaceholder()->addChild(color_button);
 
       // TODO add a way to get or create an existent TooltipManager
-      TooltipManager* tooltipManager = new TooltipManager;
+      auto* tooltipManager = new app::AppTooltipManager;
       window.addChild(tooltipManager);
       tooltipManager->addTooltipFor(color_button,
                                     Strings::sprite_properties_transparent_color_tooltip(),

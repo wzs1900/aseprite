@@ -1,5 +1,5 @@
 // Aseprite UI Library
-// Copyright (C) 2018-2025  Igara Studio S.A.
+// Copyright (C) 2018-present  Igara Studio S.A.
 // Copyright (C) 2001-2017  David Capello
 //
 // This file is released under the terms of the MIT license.
@@ -14,6 +14,7 @@
 #include "ui/display.h"
 #include "ui/keys.h"
 #include "ui/layer.h"
+#include "ui/message.h"
 #include "ui/message_type.h"
 #include "ui/mouse_button.h"
 #include "ui/pointer_type.h"
@@ -63,6 +64,10 @@ public:
   bool generateMessages();
   void dispatchMessages();
 
+  // Wakes up the system's events queue to process the currently enqueued UI
+  // messages.
+  void flushMessages() const;
+
   // Makes the generateMessages() function to return immediately if
   // there is no user events in the OS queue. Useful only for tests
   // or benchmarks where we don't wait the user (or we don't even
@@ -81,7 +86,7 @@ public:
   Widget* getMouse();
   Widget* getCapture();
 
-  void setFocus(Widget* widget);
+  void setFocus(Widget* widget, FocusMessage::Source source = FocusMessage::Source::Other);
   void setMouse(Widget* widget);
   void setCapture(Widget* widget, bool force = false);
   void attractFocus(Widget* widget);
@@ -146,8 +151,10 @@ protected:
   void onInitTheme(InitThemeEvent& ev) override;
   virtual LayoutIO* onGetLayoutIO();
   virtual void onNewDisplayConfiguration(Display* display);
+  virtual bool onEnqueueMouseDown(MouseMessage* mouseMsg);
 
 private:
+  void removeQueuedMessageIf(std::function<bool(Message*)> pred);
   void generateSetCursorMessage(Display* display,
                                 const gfx::Point& mousePos,
                                 KeyModifiers modifiers,
@@ -193,7 +200,6 @@ private:
   int pumpQueue();
   bool sendMessageToWidget(Message* msg, Widget* widget);
 
-  Widget* findForDragAndDrop(Widget* widget);
   void dragEnter(os::DragEvent& ev) override;
   void dragLeave(os::DragEvent& ev) override;
   void drag(os::DragEvent& ev) override;
@@ -202,16 +208,16 @@ private:
   static Widget* findLowestCommonAncestor(Widget* a, Widget* b);
   static bool someParentIsFocusStop(Widget* widget);
   static Widget* findMagneticWidget(Widget* widget);
-  static Message* newMouseMessage(MessageType type,
-                                  Display* display,
-                                  Widget* widget,
-                                  const gfx::Point& mousePos,
-                                  PointerType pointerType,
-                                  MouseButton button,
-                                  KeyModifiers modifiers,
-                                  const gfx::Point& wheelDelta = gfx::Point(0, 0),
-                                  bool preciseWheel = false,
-                                  float pressure = 0.0f);
+  static MouseMessage* newMouseMessage(MessageType type,
+                                       Display* display,
+                                       Widget* widget,
+                                       const gfx::Point& mousePos,
+                                       PointerType pointerType,
+                                       MouseButton button,
+                                       KeyModifiers modifiers,
+                                       const gfx::Point& wheelDelta = gfx::Point(0, 0),
+                                       bool preciseWheel = false,
+                                       float pressure = 0.0f);
   void broadcastKeyMsg(Message* msg);
 
   static Manager* m_defaultManager;

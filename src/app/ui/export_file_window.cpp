@@ -1,5 +1,5 @@
 // Aseprite
-// Copyright (C) 2019-2024  Igara Studio S.A.
+// Copyright (C) 2019-2025  Igara Studio S.A.
 // Copyright (C) 2018  David Capello
 //
 // This program is distributed under the terms of
@@ -46,7 +46,7 @@ ExportFileWindow::ExportFileWindow(const Doc* doc)
     base = base::join_path(basePath, base::get_file_title(base));
 
     std::string newFn = base::replace_extension(base, defaultExtension());
-    if (newFn == base) {
+    if (newFn == base::replace_extension(base, base::get_file_extension(doc->filename()))) {
       newFn = base::join_path(
         base::get_file_path(newFn),
         base::get_file_title(newFn) + "-export." + base::get_file_extension(newFn));
@@ -78,6 +78,7 @@ ExportFileWindow::ExportFileWindow(const Doc* doc)
   forTwitter()->setSelected(m_docPref.saveCopy.forTwitter());
   adjustResize()->setVisible(false);
   playSubtags()->setSelected(m_docPref.saveCopy.playSubtags());
+  ignoreEmpty()->setSelected(m_docPref.saveCopy.ignoreEmpty());
   // Here we don't call updateAniDir() because it's already filled and
   // set by the function fill_anidir_combobox(). So if the user
   // exported a tag with a specific AniDir, we want to keep the option
@@ -114,6 +115,7 @@ void ExportFileWindow::savePref()
   m_docPref.saveCopy.applyPixelRatio(applyPixelRatio());
   m_docPref.saveCopy.forTwitter(isForTwitter());
   m_docPref.saveCopy.playSubtags(isPlaySubtags());
+  m_docPref.saveCopy.ignoreEmpty(isIgnoreEmpty());
 }
 
 double ExportFileWindow::resizeValue() const
@@ -161,6 +163,11 @@ bool ExportFileWindow::applyPixelRatio() const
 bool ExportFileWindow::isForTwitter() const
 {
   return forTwitter()->isSelected();
+}
+
+bool ExportFileWindow::isIgnoreEmpty() const
+{
+  return ignoreEmpty()->isSelected();
 }
 
 void ExportFileWindow::setResizeScale(double scale)

@@ -16,11 +16,7 @@
 #include "app/modules/gui.h"
 #include "app/tx.h"
 #include "app/ui/color_bar.h"
-#include "app/util/autocrop.h"
-#include "doc/image.h"
-#include "doc/layer.h"
 #include "doc/mask.h"
-#include "doc/sprite.h"
 
 namespace app {
 
@@ -37,7 +33,7 @@ private:
   gfx::Rect m_bounds;
 };
 
-CropSpriteCommand::CropSpriteCommand() : Command(CommandId::CropSprite(), CmdRecordableFlag)
+CropSpriteCommand::CropSpriteCommand() : Command(CommandId::CropSprite())
 {
 }
 
@@ -73,7 +69,7 @@ void CropSpriteCommand::onExecute(Context* context)
     bounds = m_bounds;
 
   {
-    Tx tx(writer, "Sprite Crop");
+    Tx tx(writer, Strings::tx_sprite_crop());
     document->getApi(tx).cropSprite(sprite, bounds);
     tx.commit();
   }
@@ -95,8 +91,7 @@ private:
   bool m_byGrid = false;
 };
 
-AutocropSpriteCommand::AutocropSpriteCommand()
-  : Command(CommandId::AutocropSprite(), CmdRecordableFlag)
+AutocropSpriteCommand::AutocropSpriteCommand() : Command(CommandId::AutocropSprite())
 {
 }
 

@@ -1,5 +1,5 @@
 # Aseprite Document Library
-# Copyright (C) 2019-2024 Igara Studio S.A.
+# Copyright (C) 2019-2026 Igara Studio S.A.
 # Copyright (C) 2001-2018 David Capello
 
 if(WIN32)
@@ -45,6 +45,7 @@ add_library(doc-lib
   image.cpp
   image_impl.cpp
   image_io.cpp
+  image_iterators2.cpp
   layer.cpp
   layer_io.cpp
   layer_list.cpp
@@ -89,7 +90,8 @@ target_link_libraries(doc-lib
   laf-gfx
   laf-base
   fixmath-lib
-  cityhash)
+  cityhash
+  ${ZLIB_LIBRARIES})
 
 target_include_directories(doc-lib
   PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..)

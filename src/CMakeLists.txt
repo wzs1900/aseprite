@@ -1,5 +1,5 @@
 # Aseprite
-# Copyright (C) 2019-2025  Igara Studio S.A.
+# Copyright (C) 2019-present  Igara Studio S.A.
 # Copyright (C) 2001-2018  David Capello
 
 ######################################################################
@@ -42,6 +42,7 @@ endif()
 
 # Disable observable tests
 set(OBSERVABLE_TESTS OFF CACHE BOOL "Compile observable tests")
+set(OBSERVABLE_FAST_LIST ON CACHE BOOL "Use fast list (non-thread safe) instead of safe (thread-safe) one by default")
 add_subdirectory(observable)
 include_directories(observable)
 
@@ -95,7 +96,12 @@ add_subdirectory(app)
 ######################################################################
 # Output bin/data/ directory where we are going to copy data files
 
-set(DATA_OUTPUT_DIR ${CMAKE_BINARY_DIR}/bin/data)
+set(ORIGINAL_DATA_OUTPUT_DIR ${CMAKE_BINARY_DIR}/bin/data)
+if(ENABLE_ASEPRITE_EXE AND APPLE)
+  set(DATA_OUTPUT_DIR ${CMAKE_BINARY_DIR}/bin/Aseprite.app/Contents/Resources/data)
+else()
+  set(DATA_OUTPUT_DIR ${ORIGINAL_DATA_OUTPUT_DIR})
+endif()
 
 ######################################################################
 # Clone "strings" repo with translations into bin/data/strings.git
@@ -176,33 +182,59 @@ add_custom_target(copy_data DEPENDS clone_strings ${out_data_files})
 # Aseprite application
 
 if(ENABLE_ASEPRITE_EXE)
-  set(main_target aseprite)
-
   if(WIN32)
     set(main_resources
-      main/resources_win32.rc
-      main/settings.manifest)
+      main/win/resources_win32.rc
+      main/win/settings.manifest)
   endif()
 
-  add_executable(${main_target}
+  set(BUNDLE_PARAM "")
+  set(INSTALL_OPT RUNTIME)
+  if(APPLE)
+    set(BUNDLE_PARAM MACOSX_BUNDLE)
+    set(INSTALL_OPT BUNDLE)
+  endif()
+
+  add_executable(aseprite ${BUNDLE_PARAM}
     main/main.cpp
     ${main_resources})
   if(LAF_BACKEND STREQUAL "skia")
     if(WIN32)
-      set_target_properties(${main_target} PROPERTIES WIN32_EXECUTABLE true)
+      set_target_properties(aseprite PROPERTIES WIN32_EXECUTABLE true)
     endif()
   endif()
-  set_target_properties(${main_target} PROPERTIES LINK_FLAGS "${LAF_BACKEND_LINK_FLAGS}")
-  target_link_libraries(${main_target} app-lib)
-  add_dependencies(${main_target} copy_data)
+  set_target_properties(aseprite PROPERTIES LINK_FLAGS "${LAF_BACKEND_LINK_FLAGS}")
+  if(APPLE)
+    set_target_properties(aseprite PROPERTIES
+      MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_LIST_DIR}/main/osx/Info.plist")
+
+    # As the output now is inside the Aseprite.app bundle, we generate
+    # a symlink to replace the old bin/aseprite binary and run the
+    # binary inside the .app bundle.
+    add_custom_command(
+      TARGET aseprite POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E create_symlink "${CMAKE_BINARY_DIR}/bin/Aseprite.app/Contents/MacOS/aseprite" "${CMAKE_BINARY_DIR}/bin/aseprite")
+
+    # Create a bin/data link to bin/Aseprite.app/Contents/Resources/data
+    # so tests can load the data too (as tests aren't linked inside the
+    # app bundle)
+    if(IS_DIRECTORY "${ORIGINAL_DATA_OUTPUT_DIR}" AND
+       NOT IS_SYMLINK "${ORIGINAL_DATA_OUTPUT_DIR}")
+      file(RENAME "${ORIGINAL_DATA_OUTPUT_DIR}" "${ORIGINAL_DATA_OUTPUT_DIR}-deprecated")
+    endif()
+    file(MAKE_DIRECTORY "${DATA_OUTPUT_DIR}")
+    file(CREATE_LINK "${DATA_OUTPUT_DIR}" "${ORIGINAL_DATA_OUTPUT_DIR}" SYMBOLIC)
+  endif()
+  target_link_libraries(aseprite app-lib)
+  add_dependencies(aseprite copy_data)
 
   if(LAF_BACKEND_LINK_FLAGS)
-    set_target_properties(${main_target} PROPERTIES LINK_FLAGS
+    set_target_properties(aseprite PROPERTIES LINK_FLAGS
       ${LAF_BACKEND_LINK_FLAGS})
   endif()
 
-  install(TARGETS ${main_target}
-    RUNTIME DESTINATION bin)
+  install(TARGETS aseprite
+    ${INSTALL_OPT} DESTINATION bin)
 
   install(DIRECTORY ../data
     DESTINATION share/aseprite)
@@ -220,6 +252,7 @@ if(ENABLE_TESTS)
   find_tests(ui ui-lib)
   find_tests(app/cli app-lib)
   find_tests(app/file app-lib)
+  find_tests(app/ui app-lib)
   find_tests(app app-lib)
   find_tests(. app-lib)
 endif()

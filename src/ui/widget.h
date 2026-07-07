@@ -313,6 +313,10 @@ public:
   // Generates paint messages for the current update region.
   void flushRedraw();
 
+  // Wakes up the system's events queue to process the currently enqueued UI
+  // messages.
+  void flushMessages() const;
+
   GraphicsPtr getGraphics(const gfx::Rect& clip);
 
   // ===============================================================
@@ -408,6 +412,7 @@ public:
 
   // Signals
   obs::signal<void()> InitTheme;
+  obs::signal<void(bool)> EnabledChange;
 
 protected:
   // ===============================================================
@@ -481,8 +486,6 @@ private:
 
   gfx::Border m_border; // Border separation with the parent
   int m_childSpacing;   // Separation between children
-
-  friend Manager;
 };
 
 WidgetType register_widget_type();

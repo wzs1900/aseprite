@@ -21,9 +21,7 @@
 #include "app/console.h"
 #include "app/context_access.h"
 #include "app/doc_api.h"
-#include "app/find_widget.h"
 #include "app/i18n/strings.h"
-#include "app/load_widget.h"
 #include "app/modules/gui.h"
 #include "app/pref/preferences.h"
 #include "app/restore_visible_layers.h"
@@ -48,7 +46,6 @@
 #include "new_layer.xml.h"
 
 #include <algorithm>
-#include <cstdlib>
 #include <cstring>
 #include <string>
 
@@ -61,6 +58,8 @@ struct NewLayerParams : public NewParams {
   Param<bool> group{ this, false, "group" };
   Param<bool> reference{ this, false, "reference" };
   Param<bool> tilemap{ this, false, "tilemap" };
+  // Alternative for group/reference/tilemap params and used for future layer types
+  Param<std::string> type{ this, {}, "type" };
   Param<gfx::Rect> gridBounds{ this, gfx::Rect(), "gridBounds" };
   Param<bool> ask{ this, false, "ask" };
   Param<bool> fromFile{
@@ -99,7 +98,7 @@ private:
   Place m_place;
 };
 
-NewLayerCommand::NewLayerCommand() : CommandWithNewParams(CommandId::NewLayer(), CmdRecordableFlag)
+NewLayerCommand::NewLayerCommand() : CommandWithNewParams(CommandId::NewLayer())
 {
 }
 
@@ -108,11 +107,11 @@ void NewLayerCommand::onLoadParams(const Params& commandParams)
   CommandWithNewParams<NewLayerParams>::onLoadParams(commandParams);
 
   m_type = Type::Layer;
-  if (params().group())
+  if (params().group() || params().type() == "group")
     m_type = Type::Group;
-  else if (params().reference())
+  else if (params().reference() || params().type() == "reference")
     m_type = Type::ReferenceLayer;
-  else if (params().tilemap())
+  else if (params().tilemap() || params().type() == "tilemap")
     m_type = Type::TilemapLayer;
   else
     m_type = Type::Layer;
@@ -230,6 +229,7 @@ void NewLayerCommand::onExecute(Context* context)
     if (isTilemap) {
       tilesetSelector = new TilesetSelector(sprite, tilesetInfo);
       window.tilesetOptions()->addChild(tilesetSelector);
+      window.tilesetLabel()->setBuddy(tilesetSelector->tilesets());
     }
 
     window.openWindowInForeground();
@@ -246,12 +246,12 @@ void NewLayerCommand::onExecute(Context* context)
     }
   }
 
-  LayerGroup* parent = sprite->root();
+  Layer* parent = sprite->root();
   Layer* activeLayer = reader.layer();
   SelectedLayers selLayers = site.selectedLayers();
   if (activeLayer) {
     if (activeLayer->isGroup() && activeLayer->isExpanded() && m_type != Type::Group) {
-      parent = static_cast<LayerGroup*>(activeLayer);
+      parent = activeLayer;
       activeLayer = nullptr;
     }
     else {
@@ -267,16 +267,8 @@ void NewLayerCommand::onExecute(Context* context)
     bool afterBackground = false;
 
     switch (m_type) {
-      case Type::Layer:
-
-        if (m_place == Place::BeforeActiveLayer) {
-          layer = api.newLayer(parent, name);
-          api.restackLayerBefore(layer, parent, activeLayer);
-        }
-        else
-          layer = api.newLayerAfter(parent, name, activeLayer);
-        break;
-      case Type::Group: layer = api.newGroupAfter(parent, name, activeLayer); break;
+      case Type::Layer: layer = api.newLayer(parent, name); break;
+      case Type::Group: layer = api.newGroup(parent, name); break;
       case Type::ReferenceLayer:
         layer = api.newLayer(parent, name);
         if (layer)
@@ -311,6 +303,15 @@ void NewLayerCommand::onExecute(Context* context)
 
     ASSERT(layer->parent());
 
+    // Reorder the resulting layer.
+    switch (m_place) {
+      case Place::AfterActiveLayer:  api.restackLayerAfter(layer, parent, activeLayer); break;
+      case Place::BeforeActiveLayer: api.restackLayerBefore(layer, parent, activeLayer); break;
+      case Place::Top:
+        api.restackLayerAfter(layer, sprite->root(), sprite->root()->lastLayer());
+        break;
+    }
+
     // Put new layer as an overlay of the background or in the first
     // layer in case the sprite is transparent.
     if (afterBackground) {
@@ -325,7 +326,7 @@ void NewLayerCommand::onExecute(Context* context)
 
     // Put all selected layers inside the group
     if (m_type == Type::Group && site.inTimeline()) {
-      LayerGroup* commonParent = nullptr;
+      Layer* commonParent = nullptr;
       layer_t sameParents = 0;
       for (Layer* l : selLayers) {
         if (!commonParent || commonParent == l->parent()) {
@@ -336,7 +337,7 @@ void NewLayerCommand::onExecute(Context* context)
 
       if (sameParents == selLayers.size()) {
         for (Layer* newChild : selLayers.toBrowsableLayerList()) {
-          tx(new cmd::MoveLayer(newChild, layer, static_cast<LayerGroup*>(layer)->lastLayer()));
+          tx(new cmd::MoveLayer(newChild, layer, layer->lastLayer()));
         }
       }
     }
@@ -519,7 +520,7 @@ int NewLayerCommand::getMaxLayerNum(const Layer* layer) const
     max = std::strtol(layer->name().c_str() + prefix.size(), NULL, 10);
 
   if (layer->isGroup()) {
-    for (const Layer* child : static_cast<const LayerGroup*>(layer)->layers()) {
+    for (const Layer* child : layer->layers()) {
       int tmp = getMaxLayerNum(child);
       max = std::max(tmp, max);
     }

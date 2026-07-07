@@ -1,5 +1,5 @@
 // Aseprite
-// Copyright (C) 2020-2023  Igara Studio S.A.
+// Copyright (C) 2020-2025  Igara Studio S.A.
 // Copyright (C) 2001-2018  David Capello
 //
 // This program is distributed under the terms of
@@ -23,7 +23,6 @@
 #include "base/thread.h"
 #include "doc/sprite.h"
 #include "ui/manager.h"
-#include "ui/system.h"
 
 namespace app {
 
@@ -42,7 +41,7 @@ private:
 };
 
 UndoCommand::UndoCommand(Type type)
-  : Command((type == Undo ? CommandId::Undo() : CommandId::Redo()), CmdUIOnlyFlag)
+  : Command((type == Undo ? CommandId::Undo() : CommandId::Redo()))
   , m_type(type)
 {
 }
@@ -81,7 +80,7 @@ void UndoCommand::onExecute(Context* context)
 
       // Draw the current layer/frame (which is not undone yet) so the
       // user can see the doUndo/doRedo effect.
-      editor->drawSpriteClipped(gfx::Region(gfx::Rect(0, 0, sprite->width(), sprite->height())));
+      editor->drawSpriteClipped(gfx::Region(sprite->bounds()));
 
       editor->display()->flipDisplay();
       base::this_thread::sleep_for(0.01);
@@ -97,17 +96,16 @@ void UndoCommand::onExecute(Context* context)
   else
     docRangeStream = undo->nextRedoDocRange();
 
-  StatusBar* statusbar = StatusBar::instance();
-  if (statusbar) {
+  if (auto* statusBar = StatusBar::instance()) {
     std::string msg;
     if (m_type == Undo)
       msg = "Undid " + undo->nextUndoLabel();
     else
       msg = "Redid " + undo->nextRedoLabel();
     if (Preferences::instance().undo.showTooltip())
-      statusbar->showTip(1000, msg);
+      statusBar->showTip(1000, msg);
     else
-      statusbar->setStatusText(0, msg);
+      statusBar->setStatusText(0, msg);
   }
 
   // Effectively undo/redo.

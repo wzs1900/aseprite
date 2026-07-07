@@ -1,5 +1,5 @@
 // Aseprite
-// Copyright (C) 2019-2024  Igara Studio S.A.
+// Copyright (C) 2019-present  Igara Studio S.A.
 // Copyright (C) 2001-2018  David Capello
 //
 // This program is distributed under the terms of
@@ -33,15 +33,12 @@
 #include "app/ui/status_bar.h"
 #include "app/ui/timeline/timeline.h"
 #include "app/util/layer_utils.h"
-#include "base/convert_to.h"
 #include "base/fs.h"
 #include "base/string.h"
 #include "base/thread.h"
 #include "doc/layer.h"
-#include "doc/layer_tilemap.h"
 #include "doc/tag.h"
 #include "doc/tileset.h"
-#include "doc/tilesets.h"
 #include "fmt/format.h"
 #include "ui/message.h"
 #include "ui/system.h"
@@ -149,8 +146,8 @@ void destroy_doc(Context* ctx, Doc* doc)
 void insert_layers_to_selected_layers(Layer* layer, SelectedLayers& selectedLayers)
 {
   if (layer->isGroup()) {
-    auto children = static_cast<LayerGroup*>(layer)->layers();
-    for (auto child : children)
+    auto children = layer->layers();
+    for (Layer* child : children)
       insert_layers_to_selected_layers(child, selectedLayers);
   }
   else
@@ -186,6 +183,7 @@ Doc* generate_sprite_sheet_from_params(DocExporter& exporter,
   const bool extrude = params.extrude();
   const bool ignoreEmpty = params.ignoreEmpty();
   const bool mergeDuplicates = params.mergeDuplicates();
+  const bool powerOfTwoSize = params.powerOfTwoSize();
   const bool splitLayers = params.splitLayers();
   const bool splitTags = params.splitTags();
   const bool splitGrid = params.splitGrid();
@@ -273,6 +271,7 @@ Doc* generate_sprite_sheet_from_params(DocExporter& exporter,
   exporter.setSplitTags(splitTags);
   exporter.setIgnoreEmptyCels(ignoreEmpty);
   exporter.setMergeDuplicates(mergeDuplicates);
+  exporter.setPowerOfTwoSize(powerOfTwoSize);
   if (listLayers)
     exporter.setListLayers(true);
   if (listTags)
@@ -398,6 +397,7 @@ public:
     extrudeEnabled()->setSelected(params.extrude());
     mergeDups()->setSelected(params.mergeDuplicates());
     ignoreEmpty()->setSelected(params.ignoreEmpty());
+    powerOfTwoSize()->setSelected(params.powerOfTwoSize());
 
     borderPadding()->setTextf("%d", params.borderPadding());
     shapePadding()->setTextf("%d", params.shapePadding());
@@ -452,6 +452,7 @@ public:
     extrudeEnabled()->Click.connect([this] { generatePreview(); });
     mergeDups()->Click.connect([this] { generatePreview(); });
     ignoreEmpty()->Click.connect([this] { generatePreview(); });
+    powerOfTwoSize()->Click.connect([this] { generatePreview(); });
 
     imageEnabled()->Click.connect(
       [this] { onOutputFieldEnabledChange(imageFilename(), imageEnabled()->isSelected()); });
@@ -552,6 +553,7 @@ public:
     params.extrude(extrudeValue());
     params.mergeDuplicates(mergeDupsValue());
     params.ignoreEmpty(ignoreEmptyValue());
+    params.powerOfTwoSize(powerOfTwoSizeValue());
     params.openGenerated(openGeneratedValue());
     params.layer(layerValue());
     params.layerIndex(layerIndex());
@@ -766,6 +768,8 @@ private:
   bool listTagsValue() const { return listTags()->isSelected(); }
 
   bool listSlicesValue() const { return listSlices()->isSelected(); }
+
+  bool powerOfTwoSizeValue() const { return powerOfTwoSize()->isSelected(); }
 
   void onExport()
   {
@@ -1187,8 +1191,7 @@ private:
 
 } // anonymous namespace
 
-ExportSpriteSheetCommand::ExportSpriteSheetCommand(const char* id)
-  : CommandWithNewParams(id, CmdRecordableFlag)
+ExportSpriteSheetCommand::ExportSpriteSheetCommand(const char* id) : CommandWithNewParams(id)
 {
 }
 
@@ -1253,6 +1256,8 @@ void ExportSpriteSheetCommand::onExecute(Context* context)
         params.mergeDuplicates(defPref.spriteSheet.mergeDuplicates());
       if (!params.ignoreEmpty.isSet())
         params.ignoreEmpty(defPref.spriteSheet.ignoreEmpty());
+      if (!params.powerOfTwoSize.isSet())
+        params.powerOfTwoSize(defPref.spriteSheet.powerOfTwoSize());
       if (!params.openGenerated.isSet())
         params.openGenerated(defPref.spriteSheet.openGenerated());
       if (!params.layer.isSet())
@@ -1312,6 +1317,7 @@ void ExportSpriteSheetCommand::onExecute(Context* context)
     docPref.spriteSheet.extrude(params.extrude());
     docPref.spriteSheet.mergeDuplicates(params.mergeDuplicates());
     docPref.spriteSheet.ignoreEmpty(params.ignoreEmpty());
+    docPref.spriteSheet.powerOfTwoSize(params.powerOfTwoSize());
     docPref.spriteSheet.openGenerated(params.openGenerated());
     docPref.spriteSheet.layer(params.layer());
     docPref.spriteSheet.layerIndex(params.layerIndex());

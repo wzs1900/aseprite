@@ -1,5 +1,5 @@
 // Aseprite UI Library
-// Copyright (C) 2018-2025  Igara Studio S.A.
+// Copyright (C) 2018-present  Igara Studio S.A.
 // Copyright (C) 2001-2018  David Capello
 //
 // This file is released under the terms of the MIT license.
@@ -9,10 +9,14 @@
 #define UI_MESSAGE_H_INCLUDED
 #pragma once
 
+// Uncomment this to debug kPaintMessages
+// #define DEBUG_PAINT_MESSAGES 1
+
 #include "base/codepoint.h"
 #include "base/paths.h"
 #include "gfx/point.h"
 #include "gfx/rect.h"
+#include "os/dnd.h"
 #include "ui/base.h"
 #include "ui/keys.h"
 #include "ui/message_type.h"
@@ -24,6 +28,7 @@
 namespace ui {
 
 class Display;
+class Shortcut;
 class Timer;
 class Widget;
 
@@ -67,6 +72,8 @@ public:
   Widget* commonAncestor() { return m_commonAncestor; }
   void setCommonAncestor(Widget* widget) { m_commonAncestor = widget; }
 
+  virtual Shortcut shortcut() const;
+
 private:
   bool hasFlag(const Flags flag) const { return (m_flags & flag) == flag; }
   void setFlag(const Flags flag, const bool state)
@@ -97,18 +104,31 @@ private:
 
 class FocusMessage : public Message {
 public:
-  FocusMessage(MessageType type, Widget* oldFocus, Widget* newFocus)
+  enum class Source {
+    Keyboard,
+    Mouse,
+    // Focused by window opening, either from being the first child, or the focus magnet
+    Window,
+    // Focused by the label buddy
+    Buddy,
+    // Any other type of focus
+    Other
+  };
+  FocusMessage(MessageType type, Widget* oldFocus, Widget* newFocus, Source source = Source::Other)
     : Message(type)
     , m_oldFocus(oldFocus)
     , m_newFocus(newFocus)
+    , m_source(source)
   {
   }
   Widget* oldFocus() { return m_oldFocus; }
   Widget* newFocus() { return m_newFocus; }
+  Source source() const { return m_source; }
 
 private:
   Widget* m_oldFocus;
   Widget* m_newFocus;
+  Source m_source;
 };
 
 class KeyMessage : public Message {
@@ -124,6 +144,8 @@ public:
   int repeat() const { return m_repeat; }
   bool isDeadKey() const { return m_isDead; }
   void setDeadKey(bool state) { m_isDead = state; }
+
+  Shortcut shortcut() const override;
 
 private:
   KeyScancode m_scancode;
@@ -144,9 +166,18 @@ public:
   int count() const { return m_count; }
   const gfx::Rect& rect() const { return m_rect; }
 
+#if DEBUG_PAINT_MESSAGES
+  // For debugging purposes only
+  bool delayed() const { return m_delayed; }
+  void delayed(const bool v) { m_delayed = v; }
+#endif
+
 private:
   int m_count;      // Cound=0 if it's last msg of draw-chain
   gfx::Rect m_rect; // Area to draw
+#if DEBUG_PAINT_MESSAGES
+  bool m_delayed = false; // Second PaintMessage after painting the debugging placeholder
+#endif
 };
 
 class MouseMessage : public Message {
@@ -198,6 +229,8 @@ public:
 
   // Absolute position of this message on the screen.
   gfx::Point screenPosition() const;
+
+  Shortcut shortcut() const override;
 
 private:
   PointerType m_pointerType;
@@ -260,6 +293,62 @@ public:
 
 private:
   base::paths m_files;
+};
+
+class DndMessage : public Message {
+public:
+  os::DragEvent& event() { return m_event; }
+
+protected:
+  DndMessage(MessageType type, os::DragEvent& ev) : Message(type), m_event(ev) {}
+  DndMessage(const DndMessage&) = default;
+  DndMessage(DndMessage&&) = default;
+
+private:
+  os::DragEvent& m_event;
+};
+
+class DragEnterMessage : public DndMessage {
+public:
+  DragEnterMessage(os::DragEvent& ev) : DndMessage(kDragEnterMessage, ev) {}
+
+  // Returns the Widget under the mouse cursor when the user is dragging elements.
+  Widget* widget() { return m_widget; }
+  void widget(Widget* widget) { m_widget = widget; }
+
+private:
+  Widget* m_widget;
+};
+
+class DragLeaveMessage : public DndMessage {
+public:
+  DragLeaveMessage(os::DragEvent& ev) : DndMessage(kDragLeaveMessage, ev) {}
+
+  // Returns the Widget that was under the mouse cursor just before it hovers a
+  // new widget.
+  Widget* widget() { return m_widget; }
+  void widget(Widget* widget) { m_widget = widget; }
+
+private:
+  Widget* m_widget;
+};
+
+class DragMessage : public DndMessage {
+public:
+  DragMessage(os::DragEvent& ev) : DndMessage(kDragMessage, ev) {}
+
+  // Returns the widget currently being hovered by the dragged elements.
+  Widget* widget() { return m_widget; }
+  // Sets the widget currently being hovered by the dragged elements.
+  void widget(Widget* widget) { m_widget = widget; }
+
+private:
+  Widget* m_widget;
+};
+
+class DropMessage : public DndMessage {
+public:
+  DropMessage(os::DragEvent& ev) : DndMessage(kDropMessage, ev) {}
 };
 
 } // namespace ui

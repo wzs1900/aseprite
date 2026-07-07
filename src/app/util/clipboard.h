@@ -1,5 +1,5 @@
 // Aseprite
-// Copyright (C) 2019-2024  Igara Studio S.A.
+// Copyright (C) 2019-present  Igara Studio S.A.
 // Copyright (C) 2001-2018  David Capello
 //
 // This program is distributed under the terms of
@@ -23,6 +23,7 @@ class Image;
 class Mask;
 class Palette;
 class PalettePicks;
+class Slice;
 class Tileset;
 } // namespace doc
 
@@ -45,10 +46,18 @@ enum class ClipboardFormat {
   PaletteEntries,
   Tilemap,
   Tileset,
+  Slices,
 };
 
 class Clipboard : public ui::ClipboardDelegate {
 public:
+  struct NativeData {
+    std::unique_ptr<doc::Image> image;
+    std::unique_ptr<doc::Mask> mask;
+    std::unique_ptr<doc::Palette> palette;
+    std::unique_ptr<doc::Tileset> tileset;
+  };
+
   static Clipboard* instance();
 
   Clipboard();
@@ -74,6 +83,7 @@ public:
                    const doc::Palette* pal,
                    const doc::Tileset* tileset);
   void copyPalette(const doc::Palette* palette, const doc::PalettePicks& picks);
+  void copySlices(const std::vector<doc::Slice*> slices);
   void paste(Context* ctx, const bool interactive, const gfx::Point* position = nullptr);
 
   doc::ImageRef getImage(doc::Palette* palette);
@@ -96,16 +106,14 @@ public:
                        const doc::Palette* palette,
                        const doc::Tileset* tileset,
                        const doc::color_t indexMaskColor);
-  bool getNativeBitmap(doc::Image** image,
-                       doc::Mask** mask,
-                       doc::Palette** palette,
-                       doc::Tileset** tileset);
+  bool getNativeBitmap(NativeData& data);
 
 private:
   void setData(doc::Image* image,
                doc::Mask* mask,
                doc::Palette* palette,
                doc::Tileset* tileset,
+               const std::vector<doc::Slice*>* slices,
                bool set_native_clipboard,
                bool image_source_is_transparent);
   bool copyFromDocument(const Site& site, bool merged = false);
